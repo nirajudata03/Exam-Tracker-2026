@@ -83,7 +83,7 @@ function load() {
 }
 let S = load();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Could not save (storage blocked or full). Export your data from Settings.'); } };
-const V = { view: 'dash', sub: 'dme', cal: 10, day: today(), tf: {}, ntab: 'all', q: '', et: null, en: null };
+const V = { view: 'dash', sub: 'dme', cal: 10, day: today(), tf: {}, ntab: 'all', q: '', et: null, en: null, foldedUnits: {} };
 const T = { mode: 'work', run: false, end: 0, cycle: 0, subj: 'dme', left: S.set.work * 60 };
 
 /* ===== helpers ===== */
@@ -95,6 +95,8 @@ const unit = id => S.subjects.flatMap(s => s.units).find(u => u.id === id);
 const topic = (u, id) => u.topics.find(t => t.id === id);
 const task = id => S.tasks.find(t => t.id === id);
 const examStart = s => new Date(s.date + 'T' + (s.time || '00:00') + ':00').getTime();
+const formatTime = t => { if (!t) return 'Time not confirmed'; const [hh, mm] = t.split(':').map(Number); return new Date(2020, 0, 1, hh, mm).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
+const examTime = s => s.time ? `${formatTime(s.time)}–${formatTime('13:00')}` : 'Time not confirmed';
 const examEnd = s => new Date(s.date + 'T' + (s.time ? '13:00' : '23:59') + ':00').getTime();
 const nextExams = () => S.subjects.filter(s => examEnd(s) > Date.now()).sort((a, b) => examStart(a) - examStart(b));
 const mins = (sid, date) => S.sessions.filter(x => (!sid || x.subj === sid) && (!date || x.date === date)).reduce((a, x) => a + x.min, 0);
@@ -125,8 +127,17 @@ const cols = d => { const m = Math.max(...d.map(x => x[1]), 0.1); return `<div c
 const lastDays = n => Array.from({ length: n }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (n - 1 - i)); return d; });
 
 /* ===== views ===== */
-const VIEWS = [['dash', '🏠', 'Dashboard'], ['subj', '📚', 'My Subjects'], ['plan', '🗓️', 'Daily Planner'], ['tasks', '✅', 'Tasks'], ['timer', '⏱️', 'Study Timer'],
-  ['cal', '📅', 'Calendar'], ['notes', '📝', 'Notes'], ['prog', '📊', 'Progress'], ['set', '⚙️', 'Settings']];
+const VIEWS = [['dash', 'Home'], ['subj', 'Subjects'], ['tasks', 'Tasks'], ['timer', 'Timer'], ['plan', 'Planner'], ['cal', 'Calendar'], ['notes', 'Notes'], ['prog', 'Progress'], ['set', 'Settings']];
+const PRIM = ['dash', 'subj', 'tasks', 'timer']; // shown in the mobile pill; the rest live under "More"
+const ICON = {
+  dash: 'M12 3 3 11h2v9h5v-6h4v6h5v-9h2z', subj: 'M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z',
+  tasks: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.5 14.5-4-4 1.4-1.4 2.6 2.6 5.6-5.6 1.4 1.4z',
+  timer: 'M9 2h6v2H9zm3 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm1 3v4.6l3 1.8-.8 1.3L11 14V9z',
+  plan: 'M3 5h18v3H3zm0 6h18v3H3zm0 6h12v3H3z', cal: 'M6 2h2v2h8V2h2v2h3v18H3V4h3zM5 10v10h14V10z',
+  notes: 'M5 3h14v18H5zm3 4v2h8V7zm0 4v2h8v-2zm0 4v2h5v-2z', prog: 'M11 3v10h10a10 10 0 1 1-10-10zm2 0a10 10 0 0 1 8 8h-8z',
+  set: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-1-6h2l.5 2.5 2 .9 2.2-1.4 1.4 1.4-1.4 2.2.9 2 2.5.5v2l-2.5.5-.9 2 1.4 2.2-1.4 1.4-2.2-1.4-2 .9-.5 2.5h-2l-.5-2.5-2-.9-2.2 1.4-1.4-1.4 1.4-2.2-.9-2L2 14v-2l2.5-.5.9-2L4 7.3l1.4-1.4 2.2 1.4 2-.9z',
+  more: 'M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z' };
+const ic = k => `<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="${ICON[k]}"/></svg>`;
 
 function dash() {
   const t = today(), tt = S.tasks.filter(x => x.date === t), td = tt.filter(x => x.done).length;
@@ -154,13 +165,13 @@ function subj() {
   <input type="date" value="${s.date}" data-c="sub" data-k="date" aria-label="Exam date">
   <select data-c="sub" data-k="pri" aria-label="Priority">${selOpts(['Very High', 'High', 'Medium', 'Low'], s.pri)}</select>
   <select data-c="sub" data-k="rev" aria-label="Revision status">${selOpts(['Not started', 'In progress', 'Revised'], s.rev)}</select></div>
-  <p class="mu">Exam ${fmt(s.date)}, ${s.time ? '10:00 AM–1:00 PM' : 'time not confirmed'}. Units ${s.units.filter(u => u.done).length}/${s.units.length}. Topics ${td}/${tt}. Completion ${Math.round(prog(s))}%</p>${bar(prog(s))}</div>
-  ${j(s.units.map(u => `<div class="card ${u.done ? 'done' : ''}"><div class="row"><input type="checkbox" ${u.done ? 'checked' : ''} data-c="unit" data-u="${u.id}" data-k="done" title="Unit completed">
-  <input class="grow" value="${h(u.n)}" data-c="unit" data-u="${u.id}" data-k="n" maxlength="80" aria-label="Unit name"><button class="ib" data-a="unitDel" data-u="${u.id}" title="Delete unit">🗑</button></div>
-  ${u.topics.length ? j(u.topics.map(t => `<div class="row tp"><input type="checkbox" ${t.done ? 'checked' : ''} data-c="top" data-u="${u.id}" data-t="${t.id}" data-k="done">
+  <p class="mu">Exam ${fmt(s.date)}, ${examTime(s)}. Units ${s.units.filter(u => u.done).length}/${s.units.length}. Topics ${td}/${tt}. Completion ${Math.round(prog(s))}%</p>${bar(prog(s))}</div>
+  ${j(s.units.map(u => { const folded = !!V.foldedUnits[u.id]; return `<div class="card unit-card ${u.done ? 'done' : ''}"><div class="row unit-head"><input type="checkbox" ${u.done ? 'checked' : ''} data-c="unit" data-u="${u.id}" data-k="done" title="Unit completed">
+  <input class="grow" value="${h(u.n)}" data-c="unit" data-u="${u.id}" data-k="n" maxlength="80" aria-label="Unit name"><button type="button" class="unit-toggle ${folded ? 'is-folded' : ''}" data-a="unitToggle" data-u="${u.id}" aria-expanded="${!folded}" aria-label="${folded ? 'Show' : 'Hide'} topics for ${h(u.n)}"><span>Topics · ${u.topics.length}</span><span class="unit-chevron" aria-hidden="true">⌄</span></button><button class="ib" data-a="unitDel" data-u="${u.id}" title="Delete unit">🗑</button></div>
+  <div class="unit-topics ${folded ? 'is-folded' : ''}">${u.topics.length ? j(u.topics.map(t => `<div class="row tp"><input type="checkbox" ${t.done ? 'checked' : ''} data-c="top" data-u="${u.id}" data-t="${t.id}" data-k="done">
   <input class="grow" value="${h(t.t)}" data-c="top" data-u="${u.id}" data-t="${t.id}" data-k="t" maxlength="120"><label title="Mark for revision"><input type="checkbox" ${t.rev ? 'checked' : ''} data-c="top" data-u="${u.id}" data-t="${t.id}" data-k="rev"> 🔁</label>
   <button class="ib" data-a="topDel" data-u="${u.id}" data-t="${t.id}">×</button></div>`)) : '<p class="mu tp">No topics yet. Add them from your syllabus.</p>'}
-  <form class="row tp" data-f="topAdd" data-u="${u.id}"><input name="t" class="grow" placeholder="Add topic" maxlength="120"><button class="btn alt">Add topic</button></form></div>`))}
+  <form class="row tp" data-f="topAdd" data-u="${u.id}"><input name="t" class="grow" placeholder="Add topic" maxlength="120"><button class="btn alt">Add topic</button></form></div></div>`; }))}
   <p><button class="btn alt" data-a="unitAdd">+ Add unit</button></p><br>
   <div class="card"><h2>Practice questions</h2><div class="row"><input type="number" min="0" value="${s.prac.done}" data-c="prac" data-k="done" style="width:90px"> solved of <input type="number" min="0" value="${s.prac.total}" data-c="prac" data-k="total" style="width:90px"> total</div>${bar(s.prac.total ? s.prac.done / s.prac.total * 100 : 0)}</div>
   <div class="card"><h2>Study notes</h2><textarea data-c="subnotes" placeholder="Quick notes for ${h(s.short)}…">${h(s.notes)}</textarea></div>
@@ -205,7 +216,7 @@ const DUR = { work: 'Focus', short: 'Short break', long: 'Long break' };
 function timer() {
   const td = today(), tsess = S.sessions.filter(x => x.date === td).length;
   return `<h1>Study Timer</h1><div class="card"><div class="chips">${j(Object.keys(DUR).map(m => `<button class="chip ${T.mode === m ? 'on' : ''}" data-a="tmode" data-id="${m}">${DUR[m]} ${S.set[m]}m</button>`))}</div>
-  <div class="tm" id="tm"></div><div class="row" style="justify-content:center"><select data-c="tsubj" aria-label="Subject">${opts(T.subj)}</select>
+  <div class="tm ${T.run ? 'running' : ''}" id="tm"></div><div class="row" style="justify-content:center"><select data-c="tsubj" aria-label="Subject">${opts(T.subj)}</select>
   <button class="btn" data-a="tgo">${T.run ? 'Pause' : 'Start'}</button><button class="btn alt" data-a="treset">Reset</button></div>
   <p class="mu" style="text-align:center">${tsess} focus sessions today · ${hrs(mins(null, td))} h</p></div>
   <div class="card"><h2>Total time per subject</h2>${j(S.subjects.map(s => row(s.short, mins() ? mins(s.id) / mins() * 100 : 0, hrs(mins(s.id)) + ' h')))}</div>`;
@@ -216,13 +227,17 @@ function cal() {
   let cells = j(['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => `<div class="hd">${d}</div>`)) + '<div class="hd"></div>'.repeat(first.getDay());
   for (let d = 1; d <= days; d++) {
     const ds = iso(new Date(2026, m, d)), ex = S.subjects.filter(s => s.date === ds), it = S.tasks.filter(x => x.date === ds || x.due === ds);
-    cells += `<div class="${ex.length ? 'ex' : ''} ${ds === V.day ? 'sel' : ''} ${ds === t ? 'td' : ''}" data-a="day" data-id="${ds}">${d}<br>${ex.map(s => `<small>${h(s.short)}</small>`).join('')}
-    ${j(it.slice(0, 5).map(x => `<span class="dot ${x.done ? 'd' : x.kind === 'Assignment' ? 'a' : x.kind === 'Revision' ? 'r' : ''}"></span>`))}</div>`;
+    const col = (first.getDay() + d - 1) % 7;
+    const examLabel = ex.length ? `; Exam: ${ex.map(s => `${s.name}, ${examTime(s)}`).join('; ')}` : '';
+    const week = Math.floor((first.getDay() + d - 1) / 7);
+    cells += `<button type="button" class="calendar-day ${ex.length ? 'ex' : ''} ${ds === V.day ? 'sel' : ''} ${ds === t ? 'td' : ''}" data-a="day" data-id="${ds}" data-col="${col}" data-week="${week}" aria-label="${h(fmt(ds) + examLabel)}" ${ex.length ? `aria-describedby="exam-popover-${ds}"` : ''}><span class="day-number">${d}</span>${ex.map(s => `<small>${h(s.short)}</small>`).join('')}
+    ${j(it.slice(0, 5).map(x => `<span class="dot ${x.done ? 'd' : x.kind === 'Assignment' ? 'a' : x.kind === 'Revision' ? 'r' : ''}"></span>`))}
+    ${ex.length ? `<span class="exam-popover" id="exam-popover-${ds}" role="tooltip"><span class="exam-popover-kicker">EXAM DAY</span>${j(ex.map(s => `<span class="exam-preview"><span class="exam-preview-subject">${h(s.short)}</span><span class="exam-preview-info"><strong>${h(s.name)}</strong><small>${fmt(s.date)} · ${examTime(s)}</small><small>${h(s.pri)} priority · ${Math.round(prog(s))}% prepared</small><span class="pb"><u style="width:${prog(s)}%"></u></span></span></span>`))}</span>` : ''}</button>`;
   }
   const ex = S.subjects.filter(s => s.date === V.day), it = S.tasks.filter(x => x.date === V.day || x.due === V.day);
   return `<h1>Calendar</h1><div class="chips"><button class="chip ${m === 10 ? 'on' : ''}" data-a="month" data-id="10">November 2026</button><button class="chip ${m === 11 ? 'on' : ''}" data-a="month" data-id="11">December 2026</button></div>
-  <div class="cal">${cells}</div><p class="mu" style="margin:8px 0">Red = exam · blue = task/target · amber = assignment · purple = revision · green = completed</p>
-  <h2>${fmt(V.day)}</h2>${j(ex.map(s => `<div class="card"><b>${h(s.name)}</b> <span class="tag">${s.pri}</span><p class="mu">${s.time ? '10:00 AM–1:00 PM' : 'Time not confirmed'} · ${cdText(examStart(s) - Date.now())}</p>${bar(prog(s))}<span class="mu">Preparation ${Math.round(prog(s))}%</span></div>`))}
+  <div class="cal">${cells}</div><p class="mu" style="margin:8px 0">Gradient = exam · blue = task/target · amber = assignment · purple = revision · green = completed</p>
+  <h2>${fmt(V.day)}</h2>${j(ex.map(s => `<div class="card"><b>${h(s.name)}</b> <span class="tag">${s.pri}</span><p class="mu">${examTime(s)} · ${cdText(examStart(s) - Date.now())}</p>${bar(prog(s))}<span class="mu">Preparation ${Math.round(prog(s))}%</span></div>`))}
   ${it.length ? j(it.map(taskRow)) : '<div class="empty">Nothing planned for this day.</div>'}${taskForm({ date: V.day })}`;
 }
 
@@ -264,10 +279,12 @@ function set() {
 const VIEW_FN = { dash, subj, plan, tasks, timer, cal, notes, prog: prog_, set };
 
 /* ===== render ===== */
-function render() {
+function render(animate = false) {
   document.documentElement.dataset.theme = S.set.theme;
-  $('#nav').innerHTML = j(VIEWS.map(([k, i, l]) => `<button class="${V.view === k ? 'on' : ''}" data-a="nav" data-id="${k}"><b>${i}</b>${l}</button>`));
-  $('#app').innerHTML = VIEW_FN[V.view]();
+  const nb = ([k, l]) => `<button class="${V.view === k ? 'on' : ''}" data-a="nav" data-id="${k}">${ic(k)}<span>${l}</span></button>`;
+  const prim = VIEWS.filter(v => PRIM.includes(v[0])), rest = VIEWS.filter(v => !PRIM.includes(v[0]));
+  $('#nav').innerHTML = `<div class="pill">${j(prim.map(nb))}<button class="more-btn ${V.more || rest.some(r => r[0] === V.view) ? 'on' : ''}" data-a="more">${ic('more')}<span>More</span></button></div><div class="sheet ${V.more ? 'open' : ''}">${j(rest.map(nb))}</div>`;
+  $('#app').innerHTML = `<div class="${animate ? 'view-enter' : ''}">${VIEW_FN[V.view]()}</div>`;
   tick();
 }
 /* Runs every second: clock, exam countdown, timer display. */
@@ -277,7 +294,12 @@ function tick() {
   if (d) d.textContent = n ? cdText(examStart(n) - Date.now()) : '—';
   if (T.run) { T.left = Math.max(0, Math.round((T.end - Date.now()) / 1000)); if (!T.left) return finish(); }
   const t = `${String(Math.floor(T.left / 60)).padStart(2, '0')}:${String(T.left % 60).padStart(2, '0')}`;
-  if (tm) tm.textContent = t;
+  if (tm) {
+    tm.textContent = t;
+    if (T.run && !matchMedia('(prefers-reduced-motion: reduce)').matches) tm.animate(
+      [{ transform: 'translateY(-3px)', opacity: .82 }, { transform: 'translateY(0)', opacity: 1 }],
+      { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
   document.title = T.run ? `${t} · Exam Prep` : 'Exam Prep Tracker';
 }
 function beep() {
@@ -287,14 +309,15 @@ function beep() {
 function finish() {
   T.run = false;
   if (T.mode === 'work') { S.sessions.push({ id: uid(), subj: T.subj, min: S.set.work, date: today() }); T.cycle++; save(); T.mode = T.cycle % 4 ? 'short' : 'long'; } else T.mode = 'work';
-  T.left = S.set[T.mode] * 60; beep(); render();
+  T.left = S.set[T.mode] * 60; beep(); render(true);
 }
 
 /* ===== events ===== */
-const go = (v) => { V.view = v; render(); scrollTo(0, 0); };
+const go = (v) => { V.view = v; V.more = false; render(true); scrollTo(0, 0); };
 const A = {
-  nav: b => go(b.dataset.id), sub: b => { V.sub = b.dataset.id; render(); },
+  nav: b => go(b.dataset.id), more: () => { V.more = !V.more; render(); }, sub: b => { V.sub = b.dataset.id; render(true); },
   exam: b => { const s = sb(b.dataset.id); V.cal = +s.date.slice(5, 7) - 1; V.day = s.date; go('cal'); },
+  unitToggle: b => { V.foldedUnits[b.dataset.u] = !V.foldedUnits[b.dataset.u]; render(); },
   unitAdd: () => { sb(V.sub).units.push({ id: uid(), n: 'Unit ' + (sb(V.sub).units.length + 1), done: false, topics: [] }); save(); render(); },
   unitDel: b => { if (confirm('Delete this unit and its topics?')) { const s = sb(V.sub); s.units = s.units.filter(u => u.id !== b.dataset.u); save(); render(); } },
   topDel: b => { const u = unit(b.dataset.u); u.topics = u.topics.filter(t => t.id !== b.dataset.t); save(); render(); },
@@ -303,11 +326,11 @@ const A = {
   tEdit: b => { V.et = b.dataset.id; if (V.view === 'cal') go('tasks'); else { render(); scrollTo(0, 0); } },
   tDel: b => { if (confirm('Delete this task?')) { S.tasks = S.tasks.filter(t => t.id !== b.dataset.id); save(); render(); } },
   cancelEdit: () => { V.et = null; render(); },
-  month: b => { V.cal = +b.dataset.id; render(); }, day: b => { V.day = b.dataset.id; render(); },
-  tmode: b => { if (T.run) return; T.mode = b.dataset.id; T.left = S.set[T.mode] * 60; render(); },
-  tgo: () => { T.run = !T.run; if (T.run) T.end = Date.now() + T.left * 1000; render(); },
-  treset: () => { T.run = false; T.left = S.set[T.mode] * 60; render(); },
-  ntab: b => { V.ntab = b.dataset.id; render(); },
+  month: b => { V.cal = +b.dataset.id; render(true); }, day: b => { V.day = b.dataset.id; render(); },
+  tmode: b => { if (T.run) return; T.mode = b.dataset.id; T.left = S.set[T.mode] * 60; render(true); },
+  tgo: () => { T.run = !T.run; if (T.run) T.end = Date.now() + T.left * 1000; render(true); },
+  treset: () => { T.run = false; T.left = S.set[T.mode] * 60; render(true); },
+  ntab: b => { V.ntab = b.dataset.id; render(true); },
   nPin: b => { const n = S.notes.find(x => x.id === b.dataset.id); n.pin = !n.pin; save(); render(); },
   nEdit: b => { V.en = b.dataset.id; render(); scrollTo(0, 0); }, nCancel: () => { V.en = null; render(); },
   nDel: b => { if (confirm('Delete this note?')) { S.notes = S.notes.filter(x => x.id !== b.dataset.id); save(); render(); } },
