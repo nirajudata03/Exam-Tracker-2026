@@ -1,6 +1,6 @@
 'use strict';
 /* ===== Exam Prep Tracker — vanilla JS, data in localStorage ===== */
-const KEY = 'examPrepV1', $ = s => document.querySelector(s);
+const KEY = 'examPrepV1', FILE_DB = 'examPrepFilesV1', $ = s => document.querySelector(s);
 const h = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const j = a => a.join('');
 const iso = d => d.toLocaleDateString('en-CA');
@@ -83,7 +83,7 @@ function load() {
 }
 let S = load();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Could not save (storage blocked or full). Export your data from Settings.'); } };
-const V = { view: 'dash', sub: 'dme', cal: 10, day: today(), tf: {}, ntab: 'all', q: '', et: null, en: null, foldedUnits: {} };
+const V = { view: 'dash', sub: 'dme', cal: 10, day: today(), tf: {}, ntab: 'all', q: '', et: null, en: null, foldedUnits: {}, files: [] };
 const T = { mode: 'work', run: false, end: 0, cycle: 0, subj: 'dme', left: S.set.work * 60 };
 
 /* ===== helpers ===== */
@@ -94,6 +94,38 @@ const selOpts = (arr, sel) => j(arr.map(x => `<option ${x === sel ? 'selected' :
 const unit = id => S.subjects.flatMap(s => s.units).find(u => u.id === id);
 const topic = (u, id) => u.topics.find(t => t.id === id);
 const task = id => S.tasks.find(t => t.id === id);
+function fileDB() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) return reject(new Error('File storage is unavailable in this browser.'));
+    const req = indexedDB.open(FILE_DB, 1);
+    req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains('files')) req.result.createObjectStore('files', { keyPath: 'id' }); };
+    req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error || new Error('Could not open file storage.'));
+  });
+}
+async function fileRequest(method, value) {
+  const db = await fileDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('files', method === 'put' || method === 'delete' ? 'readwrite' : 'readonly');
+    const store = tx.objectStore('files');
+    const req = method === 'getAll' ? store.getAll() : method === 'get' ? store.get(value) : method === 'delete' ? store.delete(value) : store.put(value);
+    req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error || new Error('File storage request failed.'));
+    tx.oncomplete = () => db.close(); tx.onerror = () => { db.close(); reject(tx.error || new Error('File storage transaction failed.')); };
+  });
+}
+async function refreshNoteFiles() {
+  try { V.files = await fileRequest('getAll'); if (V.view === 'notes') render(); }
+  catch (e) { V.files = []; }
+}
+const noteFiles = noteId => V.files.filter(x => x.noteId === noteId);
+const supportedFile = f => f.type === 'application/pdf' || /^image\/(jpeg|png|gif|webp|avif)$/.test(f.type);
+async function saveNoteFiles(noteId, files) {
+  for (const file of files) {
+    if (!supportedFile(file)) throw new Error(`${file.name} is not a supported image or PDF.`);
+    if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} is larger than the 10 MB per-file limit.`);
+    await fileRequest('put', { id: uid(), noteId, name: file.name, type: file.type, size: file.size, blob: file });
+  }
+  await refreshNoteFiles();
+}
 const examStart = s => new Date(s.date + 'T' + (s.time || '00:00') + ':00').getTime();
 const formatTime = t => { if (!t) return 'Time not confirmed'; const [hh, mm] = t.split(':').map(Number); return new Date(2020, 0, 1, hh, mm).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
 const examTime = s => s.time ? `${formatTime(s.time)}–${formatTime('13:00')}` : 'Time not confirmed';
@@ -248,10 +280,12 @@ function notes() {
   return `<h1>Notes & Revision</h1><div class="chips">${j(tabs.map(([k, l]) => `<button class="chip ${V.ntab === k ? 'on' : ''}" data-a="ntab" data-id="${k}">${l}</button>`))}</div>
   <form class="card" data-f="note"><input type="hidden" name="id" value="${n.id || ''}"><div class="row"><input class="grow" name="title" placeholder="Title" required maxlength="100" value="${h(n.title)}"><select name="type">${j(tabs.slice(1).map(([k, l]) => `<option value="${k}" ${n.type === k ? 'selected' : ''}>${l}</option>`))}</select>
   <select name="subj">${opts(n.subj || V.sub)}</select><input name="unit" placeholder="Unit" maxlength="40" value="${h(n.unit)}" style="width:110px"></div>
-  <textarea name="body" placeholder="Write here…" required>${h(n.body)}</textarea><div class="row" style="margin:8px 0 0"><button class="btn">${n.id ? 'Save' : 'Add'}</button>${n.id ? '<button type="button" class="btn alt" data-a="nCancel">Cancel</button>' : ''}</div></form>
+  <textarea name="body" placeholder="Write here…">${h(n.body)}</textarea><div class="note-attachments">${n.id && noteFiles(n.id).length ? `<strong>Attached files</strong>${j(noteFiles(n.id).map(f => `<div class="note-file"><span class="note-file-icon">${f.type === 'application/pdf' ? 'PDF' : 'IMG'}</span><span class="note-file-name">${h(f.name)} <small>${(f.size / 1024 / 1024).toFixed(1)} MB</small></span><button type="button" class="ib" data-a="fileOpen" data-id="${f.id}" title="Open ${h(f.name)}">Open</button><button type="button" class="ib" data-a="fileDel" data-id="${f.id}" title="Remove ${h(f.name)}">×</button></div>`))}` : ''}
+  <label class="file-picker">Add files <input type="file" name="attachments" accept="image/jpeg,image/png,image/gif,image/webp,image/avif,application/pdf" multiple></label><span class="mu">JPG, PNG, GIF, WebP, AVIF or PDF · up to 10 MB each</span></div>
+  <div class="row" style="margin:8px 0 0"><button class="btn">${n.id ? 'Save' : 'Add'}</button>${n.id ? '<button type="button" class="btn alt" data-a="nCancel">Cancel</button>' : ''}</div></form>
   <div class="row"><input class="grow" placeholder="Search notes…" value="${h(V.q)}" data-c="nq"></div>
   ${list.length ? j(list.map(x => `<div class="card"><div class="row"><b class="grow">${x.pin ? '📌 ' : ''}${h(x.title)}</b><span class="tag">${h(sname(x.subj))}${x.unit ? ' · ' + h(x.unit) : ''}</span><span class="tag">${x.type}</span>
-  <button class="ib" data-a="nPin" data-id="${x.id}">📌</button><button class="ib" data-a="nEdit" data-id="${x.id}">✏️</button><button class="ib" data-a="nDel" data-id="${x.id}">🗑</button></div><div style="white-space:pre-wrap;${x.type === 'formula' ? 'font-family:monospace' : ''}">${h(x.body)}</div></div>`)) : '<div class="empty">No notes yet.</div>'}
+  <button class="ib" data-a="nPin" data-id="${x.id}">📌</button><button class="ib" data-a="nEdit" data-id="${x.id}">✏️</button><button class="ib" data-a="nDel" data-id="${x.id}">🗑</button></div><div style="white-space:pre-wrap;${x.type === 'formula' ? 'font-family:monospace' : ''}">${h(x.body)}</div>${noteFiles(x.id).length ? `<div class="saved-files"><strong>Files</strong>${j(noteFiles(x.id).map(f => `<button type="button" class="saved-file" data-a="fileOpen" data-id="${f.id}"><span>${f.type === 'application/pdf' ? 'PDF' : 'IMG'}</span>${h(f.name)}</button>`))}</div>` : ''}</div>`)) : '<div class="empty">No notes yet.</div>'}
   <div class="card"><h2>Topics marked for revision</h2>${rev.length ? j(rev.map(r => `<div>🔁 ${h(r)}</div>`)) : '<p class="mu">Tick 🔁 next to a topic in My Subjects to list it here.</p>'}</div>`;
 }
 
@@ -294,12 +328,7 @@ function tick() {
   if (d) d.textContent = n ? cdText(examStart(n) - Date.now()) : '—';
   if (T.run) { T.left = Math.max(0, Math.round((T.end - Date.now()) / 1000)); if (!T.left) return finish(); }
   const t = `${String(Math.floor(T.left / 60)).padStart(2, '0')}:${String(T.left % 60).padStart(2, '0')}`;
-  if (tm) {
-    tm.textContent = t;
-    if (T.run && !matchMedia('(prefers-reduced-motion: reduce)').matches) tm.animate(
-      [{ transform: 'translateY(-3px)', opacity: .82 }, { transform: 'translateY(0)', opacity: 1 }],
-      { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
-  }
+  if (tm) tm.textContent = t;
   document.title = T.run ? `${t} · Exam Prep` : 'Exam Prep Tracker';
 }
 function beep() {
@@ -333,12 +362,14 @@ const A = {
   ntab: b => { V.ntab = b.dataset.id; render(true); },
   nPin: b => { const n = S.notes.find(x => x.id === b.dataset.id); n.pin = !n.pin; save(); render(); },
   nEdit: b => { V.en = b.dataset.id; render(); scrollTo(0, 0); }, nCancel: () => { V.en = null; render(); },
-  nDel: b => { if (confirm('Delete this note?')) { S.notes = S.notes.filter(x => x.id !== b.dataset.id); save(); render(); } },
+  nDel: async b => { if (confirm('Delete this note and its attached files?')) { const id = b.dataset.id; S.notes = S.notes.filter(x => x.id !== id); for (const f of noteFiles(id)) await fileRequest('delete', f.id); save(); await refreshNoteFiles(); render(); } },
+  fileOpen: async b => { try { const f = await fileRequest('get', b.dataset.id); if (!f) throw new Error('This attachment is no longer available.'); const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch (e) { alert(e.message || 'Could not open this file.'); } },
+  fileDel: async b => { try { await fileRequest('delete', b.dataset.id); await refreshNoteFiles(); render(); } catch (e) { alert(e.message || 'Could not remove this file.'); } },
   export: () => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' }));
     a.download = `exam-prep-backup-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
   },
-  reset: () => { if (confirm('Erase ALL data? This cannot be undone. Export a backup first.') && confirm('Really erase everything?')) { localStorage.removeItem(KEY); S = defaults(); render(); } }
+  reset: async () => { if (confirm('Erase ALL data? This cannot be undone. Export a backup first.') && confirm('Really erase everything?')) { localStorage.removeItem(KEY); S = defaults(); for (const f of V.files) await fileRequest('delete', f.id); V.files = []; render(); } }
 };
 const C = {
   sub: e => { const s = sb(V.sub), k = e.dataset.k, v = e.value.trim(); if (k === 'date' && !v) return render(); if (k === 'name' && !v) return render(); s[k] = v; },
@@ -376,10 +407,19 @@ const F = {
     const o = { title: d.title.trim(), subj: d.subj, kind: d.kind, pri: d.pri, date: d.date, due: d.due };
     if (d.id) Object.assign(task(d.id), o); else S.tasks.push({ id: uid(), done: false, ...o }); V.et = null;
   },
-  note: (f, d) => {
+  note: async (f, d) => {
+    const files = Array.from(f.querySelector('[name="attachments"]').files);
     const o = { title: d.title.trim(), type: d.type, subj: d.subj, unit: d.unit.trim(), body: d.body.trim() };
-    if (!o.title || !o.body) return bad('Title and text are required.');
-    if (d.id) Object.assign(S.notes.find(x => x.id === d.id), o); else S.notes.push({ id: uid(), pin: false, ...o }); V.en = null;
+    if (!o.title || (!o.body && !files.length)) return bad('Add a title and either note text or an attachment.');
+    for (const file of files) {
+      if (!supportedFile(file)) return bad(`${file.name} is not a supported image or PDF.`);
+      if (file.size > 10 * 1024 * 1024) return bad(`${file.name} is larger than the 10 MB per-file limit.`);
+    }
+    let saved;
+    if (d.id) { saved = S.notes.find(x => x.id === d.id); Object.assign(saved, o); }
+    else { saved = { id: uid(), pin: false, ...o }; S.notes.push(saved); }
+    V.en = null;
+    if (files.length) try { await saveNoteFiles(saved.id, files); } catch (e) { alert(`The note was saved, but an attachment could not be saved: ${e.message}`); }
   }
 };
 document.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b && A[b.dataset.a]) A[b.dataset.a](b); });
@@ -389,7 +429,10 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('submit', e => {
   const f = e.target; if (!f.dataset.f) return; e.preventDefault();
-  if (F[f.dataset.f](f, Object.fromEntries(new FormData(f))) === false) return; save(); render();
+  Promise.resolve(F[f.dataset.f](f, Object.fromEntries(new FormData(f)))).then(result => {
+    if (result === false) return; save(); render();
+  }).catch(err => alert(err.message || 'Could not save this form.'));
 });
 setInterval(tick, 1000);
 render();
+refreshNoteFiles();

@@ -105,9 +105,24 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:0 0 0
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin:1px;background:var(--bl)}
 .dot.e{background:var(--er)}.dot.a{background:var(--ac)}.dot.r{background:#b48cff}.dot.d{background:var(--ok)}
 .empty{text-align:center;color:var(--mu);padding:18px}
-.tm{font-size:4rem;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;margin:10px 0;color:var(--tx);transition:color .3s ease,text-shadow .3s ease}
+.note-attachments{display:grid;gap:8px;margin-top:10px;padding:12px;border:1px dashed var(--bd);border-radius:10px}
+.file-picker{display:inline-flex;width:max-content;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);cursor:pointer;transition:border-color .2s ease,color .2s ease}
+.file-picker:hover{border-color:var(--ac);color:var(--ac)}
+.file-picker input{max-width:min(100%,300px);padding:4px;border:0;background:transparent}
+.note-file,.saved-file{display:flex;align-items:center;gap:9px;min-width:0;padding:7px 9px;border:1px solid var(--bd);border-radius:8px;background:var(--bg)}
+.note-file-icon,.saved-file span{flex:none;padding:3px 6px;border-radius:5px;background:linear-gradient(135deg,#238ff0,#6d73ec);color:#fff;font-size:.68rem;font-weight:700}
+.note-file-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.note-file-name small{display:block;color:var(--mu);font-size:.75rem}
+.saved-files{display:grid;gap:6px;margin-top:10px}
+.saved-files>strong{font-size:.82rem;color:var(--mu)}
+.saved-file{width:100%;color:var(--tx);text-align:left;font:inherit;cursor:pointer;transition:border-color .2s ease,transform .18s ease}
+.saved-file:hover{border-color:var(--ac);transform:translateY(-1px)}
+.saved-file span{flex:none}
+.saved-file:not(span){overflow-wrap:anywhere}
+.tm{font-size:4rem;font-weight:700;line-height:1.12;text-align:center;font-variant-numeric:tabular-nums;margin:10px 0;color:var(--tx);transition:color .3s ease,text-shadow .3s ease}
 .tm.running{color:var(--ac);text-shadow:0 0 20px rgba(185,155,232,.32);animation:timer-glow 2.4s ease-in-out infinite}
-.tm.running::after{content:"RUNNING";display:block;margin-top:-5px;color:var(--mu);font-size:.62rem;font-weight:650;letter-spacing:.16em;line-height:1.2}
+.tm::after{content:"\00a0";display:block;min-height:.78rem;margin-top:2px;color:var(--mu);font-size:.62rem;font-weight:650;letter-spacing:.16em;line-height:1.2}
+.tm.running::after{content:"RUNNING"}
 @keyframes timer-glow{50%{text-shadow:0 0 30px rgba(185,155,232,.54)}}
 @media(min-width:800px){
 nav{top:0;right:auto;width:210px;padding:14px 8px;background:var(--card);border-right:1px solid var(--bd);pointer-events:auto}
