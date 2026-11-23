@@ -133,3 +133,9 @@ nav button{flex-direction:row;gap:12px;font-size:.92rem;padding:10px 14px;border
 main{margin-left:210px;max-width:none;padding:28px 32px 40px}
 .cal>div,.cal .calendar-day{min-height:84px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
+
+.cal .calendar-day.movie{background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,.15) 55%,rgba(0,0,0,.6)),url(assets/doomsday-calendar.jpg) center/cover no-repeat;border-color:#6fbf5a;box-shadow:0 0 14px rgba(90,190,90,.25)}
+.cal .calendar-day.movie .day-number{color:#fff;font-weight:700;text-shadow:0 1px 3px #000}
+.calendar-day small.movie-label{color:#d9ffd0;font-weight:600;text-shadow:0 1px 3px #000}
+.card.movie-task{min-height:230px;border-color:#2c4a28;background:#000 url(assets/doomsday-task.jpg) center bottom 10px/auto 64% no-repeat;color:#fff}
+.card.movie-task .mu,.card.movie-task .tag{color:#d4e6d0;border-color:rgba(255,255,255,.3)}

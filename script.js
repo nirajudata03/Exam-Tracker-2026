@@ -7,6 +7,9 @@ const iso = d => d.toLocaleDateString('en-CA');
 const today = () => iso(new Date());
 const uid = () => Math.random().toString(36).slice(2, 9);
 const fmt = s => new Date(s + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+/* Special event: change this date to move the Avengers: Doomsday highlight and task (YYYY-MM-DD). */
+const MOVIE_DATE = '2026-12-17';
+const movieDate = () => S.tasks.find(t => t.special)?.date || MOVIE_DATE;
 const KINDS = ['Task', 'Study target', 'Assignment', 'Revision'], PRIS = ['High', 'Medium', 'Low'];
 
 // id, short, name, exam date, priority, start time ('' = not confirmed)
@@ -227,7 +230,7 @@ function taskForm(t = {}) {
   <div class="row"><label class="mu">Date <input type="date" name="date" value="${t.date || V.day}"></label><label class="mu">Deadline <input type="date" name="due" value="${t.due || ''}"></label>
   <button class="btn">${t.id ? 'Save task' : 'Add task'}</button>${t.id ? '<button type="button" class="btn alt" data-a="cancelEdit">Cancel</button>' : ''}</div></form>`;
 }
-const taskRow = t => `<div class="card ${t.done ? 'done' : ''}"><div class="row"><input type="checkbox" ${t.done ? 'checked' : ''} data-c="tgl" data-id="${t.id}">
+const taskRow = t => `<div class="card ${t.done ? 'done' : ''} ${t.special ? 'movie-task' : ''}"><div class="row"><input type="checkbox" ${t.done ? 'checked' : ''} data-c="tgl" data-id="${t.id}">
   <span class="grow tt">${h(t.title)}</span><span class="tag">${h(sname(t.subj))}</span><span class="tag">${t.kind || 'Task'}</span><span class="tag ${t.pri === 'High' ? 'er' : ''}">${t.pri}</span>
   ${overdue(t) ? '<span class="tag er">Overdue</span>' : ''}<span class="mu">${t.date ? fmt(t.date) : ''}${t.due ? ' → ' + fmt(t.due) : ''}</span>
   <button class="ib" data-a="tEdit" data-id="${t.id}">✏️</button><button class="ib" data-a="tDel" data-id="${t.id}">🗑</button></div></div>`;
@@ -262,7 +265,7 @@ function cal() {
     const col = (first.getDay() + d - 1) % 7;
     const examLabel = ex.length ? `; Exam: ${ex.map(s => `${s.name}, ${examTime(s)}`).join('; ')}` : '';
     const week = Math.floor((first.getDay() + d - 1) / 7);
-    cells += `<button type="button" class="calendar-day ${ex.length ? 'ex' : ''} ${ds === V.day ? 'sel' : ''} ${ds === t ? 'td' : ''}" data-a="day" data-id="${ds}" data-col="${col}" data-week="${week}" aria-label="${h(fmt(ds) + examLabel)}" ${ex.length ? `aria-describedby="exam-popover-${ds}"` : ''}><span class="day-number">${d}</span>${ex.map(s => `<small>${h(s.short)}</small>`).join('')}
+    cells += `<button type="button" class="calendar-day ${ex.length ? 'ex' : ''} ${ds === movieDate() ? 'movie' : ''} ${ds === V.day ? 'sel' : ''} ${ds === t ? 'td' : ''}" data-a="day" data-id="${ds}" data-col="${col}" data-week="${week}" aria-label="${h(fmt(ds) + examLabel)}" ${ex.length ? `aria-describedby="exam-popover-${ds}"` : ''}><span class="day-number">${d}</span>${ds === movieDate() ? '<small class="movie-label">🎬 Doomsday</small>' : ''}${ex.map(s => `<small>${h(s.short)}</small>`).join('')}
     ${j(it.slice(0, 5).map(x => `<span class="dot ${x.done ? 'd' : x.kind === 'Assignment' ? 'a' : x.kind === 'Revision' ? 'r' : ''}"></span>`))}
     ${ex.length ? `<span class="exam-popover" id="exam-popover-${ds}" role="tooltip"><span class="exam-popover-kicker">EXAM DAY</span>${j(ex.map(s => `<span class="exam-preview"><span class="exam-preview-subject">${h(s.short)}</span><span class="exam-preview-info"><strong>${h(s.name)}</strong><small>${fmt(s.date)} · ${examTime(s)}</small><small>${h(s.pri)} priority · ${Math.round(prog(s))}% prepared</small><span class="pb"><u style="width:${prog(s)}%"></u></span></span></span>`))}</span>` : ''}</button>`;
   }
@@ -313,7 +316,16 @@ function set() {
 const VIEW_FN = { dash, subj, plan, tasks, timer, cal, notes, prog: prog_, set };
 
 /* ===== render ===== */
+/* Adds the Avengers: Doomsday task once; deleting it later keeps it deleted. */
+function seedSpecial() {
+  S.flags = S.flags || {};
+  if (S.flags.doomsday) return;
+  S.flags.doomsday = true;
+  if (!S.tasks.some(t => t.special)) S.tasks.push({ id: 'special-doomsday', special: true, done: false, title: 'Watch Avengers: Doomsday', subj: '', kind: 'Task', pri: 'Low', date: MOVIE_DATE, due: '' });
+  save();
+}
 function render(animate = false) {
+  seedSpecial();
   document.documentElement.dataset.theme = S.set.theme;
   const nb = ([k, l]) => `<button class="${V.view === k ? 'on' : ''}" data-a="nav" data-id="${k}">${ic(k)}<span>${l}</span></button>`;
   const prim = VIEWS.filter(v => PRIM.includes(v[0])), rest = VIEWS.filter(v => !PRIM.includes(v[0]));
